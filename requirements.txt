@@ -1,0 +1,18 @@
+# Core DSPy framework
+dspy-ai
+
+# Data processing
+pandas
+
+# ML utilities
+scikit-learn
+
+# Semantic similarity evaluation
+sentence-transformers
+
+# Visualization
+matplotlib
+seaborn
+
+# Environment variables
+python-dotenv
