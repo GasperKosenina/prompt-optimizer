@@ -141,12 +141,50 @@ See `docs/03-research-methodology.md` for full research design and `docs/05-resp
 
 **Key Insight**: Not all tasks benefit equally from optimization. Simple pattern matching (classification) sees minimal gains, while complex generation tasks (responses) show major improvement.
 
+### Understanding System Prompts in DSPy
+
+In DSPy, there's no explicit "system prompt". Instead, the **Signature docstring and field descriptions** become the instructions:
+
+```python
+class ResponseGenerator(dspy.Signature):
+    """Generate customer support response"""  # ← This becomes the "system prompt"
+    query: str = dspy.InputField(desc="...")
+    response: str = dspy.OutputField(desc="...")
+```
+
+MIPROv2 optimizes these **instructions** and selects **few-shot demos**. To inspect what was discovered:
+
+```python
+for name, pred in optimized.named_predictors():
+    print(pred.signature.instructions)
+```
+
+### LLM-as-Judge (Phase 2)
+
+Response quality is evaluated using **LLM-as-Judge** instead of rule-based metrics:
+
+```python
+class ResponseQualityJudge(dspy.Signature):
+    query: str = dspy.InputField()
+    response: str = dspy.InputField()
+    quality_score: float = dspy.OutputField(desc="0.0 to 1.0")
+
+judge = dspy.ChainOfThought(ResponseQualityJudge)
+
+def metric(example, pred):
+    return judge(query=example.query, response=pred.response).quality_score
+```
+
+Use a different model for judging (e.g., GPT-4o-mini) than for generation (GPT-3.5) to avoid bias.
+
 ## File Structure Notes
 
 - `examples/`: Progressive tutorial scripts (01-03) demonstrating DSPy basics through optimization
 - `src/data/`: Dataset loading with stratified sampling support
-- `src/modules/`: Task-specific DSPy signatures and evaluation logic
+- `src/modules/`: Task-specific DSPy signatures (IntentClassifier, ResponseGenerator)
 - `src/optimizers/`: Experiment runner with optimizer comparison utilities
-- `src/evaluation/`: Quality metrics for response generation (Part 2)
+- `src/evaluation/`: LLM-as-Judge implementation for response quality (Part 2)
+  - `llm_judge.py`: Judge signatures and metric functions
+  - `response_evaluator.py`: Evaluation runner
 - `results/`: Output directory for optimized models, metrics (JSON), and visualizations (PNG)
 - `docs/`: Project documentation including research methodology and implementation guides

@@ -27,6 +27,50 @@ This research investigates **when and why** automated prompt optimization matter
 
 ---
 
+## Understanding System Prompts in DSPy
+
+### What Gets Optimized?
+
+In DSPy, the "system prompt" is called **instructions** and is derived from your Signature:
+
+```python
+class ResponseGenerator(dspy.Signature):
+    """Generate customer support response"""  # ← This becomes instructions
+    query: str = dspy.InputField(desc="...")
+    response: str = dspy.OutputField(desc="...")
+```
+
+### MIPROv2 Optimization Process
+
+MIPROv2 modifies two components:
+
+| Component | What It Is | How to Inspect |
+|-----------|-----------|----------------|
+| **Instructions** | Task description (the "system prompt") | `pred.signature.instructions` |
+| **Demos** | Few-shot examples | Stored in compiled module |
+
+The optimization flow:
+1. MIPROv2 generates instruction candidates via meta-prompting
+2. For each candidate, runs evaluation using the metric function (LLM-as-Judge)
+3. Uses Bayesian optimization to search for best instruction + demo combination
+4. Saves winning configuration to the compiled module
+
+### How to Inspect Results
+
+```python
+# After optimization
+for name, pred in optimized.named_predictors():
+    print(f"Predictor: {name}")
+    print(f"Instructions: {pred.signature.instructions}")
+
+# See full prompt history
+dspy.inspect_history()
+```
+
+This inspection is **central to the research** - we want to understand what instructions MIPROv2 discovers and why they improve quality.
+
+---
+
 ## Hypothesis
 
 **H1**: Classification tasks show **minimal improvement** (<5%) from prompt optimization because modern LLMs already recognize patterns well.
@@ -73,36 +117,37 @@ Bitext Customer Support Dataset (27K examples, stratified sampling)
 
 #### Task
 Generate customer support responses that are:
-- **Factually accurate** (addresses the query correctly)
-- **Empathetic** (appropriate tone for frustrated customers)
-- **Structured** (clear steps/information)
-- **Concise** (no unnecessary verbosity)
-- **Safe** (follows company policies, no unrealistic promises)
-- **Actionable** (provides clear next steps)
+- **Helpful** (provides useful, actionable information)
+- **Empathetic** (acknowledges customer's concern)
+- **Professional** (appropriate tone and language)
+- **Complete** (fully addresses the query)
 
 #### Dataset
 Same Bitext dataset (includes both queries and gold-standard responses)
 
 #### Approach
 
-##### 1. Define Response Quality Metrics
+##### 1. Define Response Quality Metrics (LLM-as-Judge)
 
-**Automated Metrics** (computed for all examples):
-- **Semantic Similarity** (0-1): How close to gold-standard response?
-  - Tool: `sentence-transformers` with `all-MiniLM-L6-v2`
-  - Threshold: >0.7 = good, >0.85 = excellent
+Instead of rule-based metrics, we use **LLM-as-Judge** for evaluation:
 
-- **Structural Quality** (boolean checks):
-  - Has acknowledgment of customer concern?
-  - Provides actionable steps/information?
-  - Appropriate length (50-200 words)?
-  - Uses company placeholders ({{Order Number}}, etc.)?
-  - Offers follow-up help?
+**Why LLM-as-Judge?**
+- More nuanced evaluation of tone, empathy, and helpfulness
+- Native DSPy integration (same paradigm for generation and evaluation)
+- Captures aspects that rules can't (e.g., "Is this response professional?")
+- Simpler implementation, no external dependencies (sentence-transformers, regex)
 
-- **Tone Analysis** (classifier-based):
-  - Empathy score (sentiment classifier)
-  - Professionalism score
-  - No inappropriate language
+**Judge Dimensions** (multi-dimensional approach):
+- **Helpfulness** (40%): Does the response provide useful, actionable information?
+- **Professionalism** (20%): Is the language appropriate and professional?
+- **Empathy** (20%): Does the response acknowledge the customer's concern?
+- **Completeness** (20%): Does the response fully address the query?
+
+**Alternative**: Single judge with holistic quality score (0.0-1.0)
+
+**Important**: Use a different model for judging than for generation to avoid bias:
+- Generator: GPT-3.5-turbo
+- Judge: GPT-4o-mini or Claude-3-Haiku
 
 **Human Evaluation** (sampled, n=100):
 - Blind A/B comparison of:
@@ -172,19 +217,22 @@ Expected quality: ~80-85% (very good)
 
 ## Metrics & Evaluation Framework
 
-### Composite Quality Score
+### Composite Quality Score (LLM-as-Judge)
 
-Weighted average of multiple dimensions:
+Weighted average of LLM judge dimensions:
 
 ```python
 quality_score = (
-    0.30 * semantic_similarity +      # How close to gold standard?
-    0.20 * structural_completeness +  # Has all required components?
-    0.20 * tone_appropriateness +     # Empathetic and professional?
-    0.15 * conciseness_score +        # Appropriate length?
-    0.15 * actionability_score        # Clear next steps?
+    0.40 * helpfulness +       # Does it help the customer?
+    0.20 * professionalism +   # Is it appropriate?
+    0.20 * empathy +           # Does it acknowledge concerns?
+    0.20 * completeness        # Does it fully address the query?
 )
 ```
+
+Each dimension is evaluated by a separate LLM judge signature, returning either:
+- `bool` (converted to 0.0 or 1.0)
+- `float` (0.0 to 1.0 scale)
 
 ### Success Criteria
 
@@ -213,18 +261,19 @@ quality_score = (
 - [x] **Finding**: 90% → 92% (+2%), confirming H1
 
 ### Phase 2: Response Generation (In Progress)
-- [ ] Extend data loader to include `response` field
+- [ ] Verify data loader supports `response` field
 - [ ] Create `ResponseGenerator` DSPy signature
-- [ ] Implement automated quality metrics:
-  - [ ] Semantic similarity (sentence-transformers)
-  - [ ] Structural checks (regex/pattern matching)
-  - [ ] Tone analysis (sentiment classifier)
+- [ ] Implement LLM-as-Judge evaluation:
+  - [ ] Single judge (ResponseQualityJudge)
+  - [ ] Multi-dimensional judges (Helpfulness, Professionalism, Empathy, Completeness)
+  - [ ] Metric functions for DSPy optimizers
 - [ ] Run baseline (GPT-3.5 zero-shot)
 - [ ] Run MIPROv2 optimization on responses
+- [ ] **Inspect optimized instructions** (key research output)
 - [ ] Run GPT-4 baseline for comparison
 - [ ] Collect human evaluation (n=100 samples)
 - [ ] Generate comparison visualizations
-- [ ] Analyze which prompt components matter
+- [ ] Analyze which instruction components correlate with quality
 
 ### Phase 3: Analysis & Documentation
 - [ ] Statistical significance testing
@@ -309,9 +358,11 @@ This research will be considered successful if we can demonstrate:
 ### Data & Code
 - `results/classification_metrics.json` - Part 1 results
 - `results/response_quality_metrics.json` - Part 2 results
+- `results/response_generator_optimized.json` - Optimized module (contains discovered instructions)
 - `results/*.png` - Comparison visualizations
-- `src/modules/response_generator.py` - Response generation module
-- `src/evaluation/quality_metrics.py` - Quality evaluation code
+- `src/modules/response_generator.py` - Response generation signature
+- `src/evaluation/llm_judge.py` - LLM-as-Judge signatures and metrics
+- `src/evaluation/response_evaluator.py` - Evaluation runner
 
 ### Documentation
 - Technical report (10-15 pages)
@@ -353,7 +404,8 @@ This research will be considered successful if we can demonstrate:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: January 4, 2026
+**Document Version**: 2.0
+**Last Updated**: January 7, 2026
 **Author**: Research Team
 **Status**: Living document - update as research progresses
+**Major Changes**: Added LLM-as-Judge approach, system prompt explanation

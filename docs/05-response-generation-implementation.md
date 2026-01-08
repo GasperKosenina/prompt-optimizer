@@ -1,4 +1,4 @@
-# Response Generation Implementation Guide
+# Response Generation Implementation Guide (Phase 2)
 
 **Quick reference for implementing Part 2 of the research**
 
@@ -6,17 +6,87 @@
 
 ## Overview
 
-This guide provides concrete implementation steps for the response generation evaluation, the core contribution of this research.
+This guide provides concrete implementation steps for the response generation evaluation using **LLM-as-Judge** for quality assessment.
+
+### Key Change from Original Plan
+
+Instead of rule-based metrics (regex patterns, sentence-transformers), we use **LLM-as-Judge** because:
+- More nuanced evaluation of tone, empathy, and helpfulness
+- Native DSPy integration (same paradigm for generation and evaluation)
+- Captures aspects that rules can't (e.g., "Is this response professional?")
+- Simpler implementation, no external dependencies
+
+---
+
+## Understanding System Prompts in DSPy
+
+Before implementing, it's crucial to understand **what gets optimized**.
+
+### Where is the "System Prompt"?
+
+In DSPy, there's no explicit system prompt you write. Instead, DSPy generates it from your **Signature**:
+
+```python
+class ResponseGenerator(dspy.Signature):
+    """Generate customer support response"""  # ← Becomes instructions
+
+    query: str = dspy.InputField(desc="Customer support query")
+    intent: str = dspy.InputField(desc="Detected customer intent")
+    response: str = dspy.OutputField(desc="Professional, empathetic response")
+```
+
+The docstring and field descriptions become the "system prompt" that DSPy sends to the LLM.
+
+### What MIPROv2 Optimizes
+
+MIPROv2 modifies **two components**:
+
+| Component | Location | What Changes |
+|-----------|----------|--------------|
+| **Instructions** | `signature.instructions` | The task description |
+| **Demos** | Few-shot examples | Selected from trainset |
+
+**Before optimization:**
+```
+"Generate customer support response"
+```
+
+**After MIPROv2 optimization:**
+```
+"You are an expert customer service representative. When responding
+to customer queries, always: (1) acknowledge their concern with empathy,
+(2) provide clear, actionable steps, (3) use a warm but professional tone,
+(4) offer follow-up assistance. Reference order numbers using {{placeholders}}."
+```
+
+### How to Inspect Optimized Instructions
+
+```python
+# After optimization
+optimized = mipro.compile(module, trainset=trainset)
+
+# View the optimized "system prompt"
+for name, pred in optimized.named_predictors():
+    print(f"=== {name} ===")
+    print(pred.signature.instructions)
+
+# Or for simple modules
+print(optimized.predict.signature.instructions)
+
+# See full prompt history
+dspy.inspect_history()
+```
 
 ---
 
 ## Architecture
 
 ```
-Query → Classify Intent → Generate Response → Evaluate Quality → Compare Results
-   ↓           ↓                  ↓                  ↓                 ↓
-Bitext     IntentClassifier   ResponseGenerator   QualityMetrics   Visualizations
-           (Part 1 ✓)         (Part 2 TODO)       (Part 2 TODO)    (Part 2 TODO)
+Query + Intent → ResponseGenerator → Response → LLM Judge → Score
+                        ↑                            ↓
+                   MIPROv2 optimizes          Uses score to
+                   instructions               select best
+                   based on scores            instruction
 ```
 
 ---
@@ -25,43 +95,22 @@ Bitext     IntentClassifier   ResponseGenerator   QualityMetrics   Visualization
 
 ### Modify `src/data/loader.py`
 
-Add function to load query + response pairs:
+The function `load_response_generation_data()` already exists. Verify it returns:
 
 ```python
 def load_response_generation_data(
     n_train: int = 200,
     n_test: int = 100,
+    include_intent: bool = True,
 ) -> tuple[list[dspy.Example], list[dspy.Example]]:
     """
     Load data for response generation task.
 
     Returns examples with:
     - query: Customer query
-    - intent: Classified intent (optional, can include for context)
+    - intent: Classified intent (if include_intent=True)
     - response: Gold standard response
     """
-    df = load_bitext_dataset()
-
-    # Create examples with query + response
-    examples = []
-    for _, row in df.iterrows():
-        examples.append(
-            dspy.Example(
-                query=row["instruction"],
-                intent=row["intent"],
-                response=row["response"]
-            ).with_inputs("query", "intent")  # Only query+intent are inputs
-        )
-
-    # Stratified split
-    trainset, testset = split_dataset(
-        examples,
-        n_train=n_train,
-        n_test=n_test,
-        stratify_by="intent"
-    )
-
-    return trainset, testset
 ```
 
 ---
@@ -71,167 +120,256 @@ def load_response_generation_data(
 ### Create `src/modules/response_generator.py`
 
 ```python
+"""
+Response Generator Module
+
+Generates customer support responses using DSPy.
+The system prompt (instructions) is optimized by MIPROv2.
+"""
+
 import dspy
 
+
 class ResponseGenerator(dspy.Signature):
-    """Generate customer support response"""
+    """Generate a helpful customer support response."""
 
     query: str = dspy.InputField(
         desc="Customer support query or message"
     )
     intent: str = dspy.InputField(
-        desc="Detected customer intent (e.g., cancel_order, track_order)"
+        desc="Detected customer intent category (e.g., cancel_order, track_order)"
     )
-
     response: str = dspy.OutputField(
-        desc="Professional, empathetic support response with clear steps"
+        desc="Professional, empathetic support response with clear next steps"
     )
 
 
 def create_response_generator() -> dspy.ChainOfThought:
-    """Create a response generator with chain-of-thought reasoning."""
-    return dspy.ChainOfThought(ResponseGenerator)
-```
+    """
+    Create a response generator with chain-of-thought reasoning.
 
-**Why include intent?**
-- Gives the model context about what type of response is needed
-- Matches real-world scenario (you'd classify first, then generate)
-- Allows evaluation of "given correct intent, how good is the response?"
+    ChainOfThought adds a 'reasoning' step before generating the response,
+    which often improves quality.
+    """
+    return dspy.ChainOfThought(ResponseGenerator)
+
+
+def get_optimized_instructions(module: dspy.Module) -> str:
+    """
+    Extract the optimized instructions (system prompt) from a compiled module.
+
+    Use this to inspect what MIPROv2 discovered.
+    """
+    for name, pred in module.named_predictors():
+        return pred.signature.instructions
+    return ""
+
+
+def print_all_instructions(module: dspy.Module) -> None:
+    """Print instructions for all predictors in a module."""
+    for name, pred in module.named_predictors():
+        print(f"=== {name} ===")
+        print(pred.signature.instructions)
+        print()
+```
 
 ---
 
-## Step 3: Quality Metrics Implementation
+## Step 3: LLM-as-Judge Implementation
 
-### Create `src/evaluation/quality_metrics.py`
+### Create `src/evaluation/llm_judge.py`
 
 ```python
-import re
-from sentence_transformers import SentenceTransformer
-import numpy as np
+"""
+LLM-as-Judge for Response Quality Evaluation
 
-# Load semantic similarity model once
-_similarity_model = None
+Uses a separate LLM to judge response quality, providing the optimization
+signal for MIPROv2. This is more nuanced than rule-based metrics.
+"""
 
-def get_similarity_model():
-    global _similarity_model
-    if _similarity_model is None:
-        _similarity_model = SentenceTransformer('all-MiniLM-L6-v2')
-    return _similarity_model
+import dspy
+from typing import Optional
 
 
-def semantic_similarity(text1: str, text2: str) -> float:
-    """Compute cosine similarity between two texts (0-1)."""
-    model = get_similarity_model()
-    embeddings = model.encode([text1, text2])
-    similarity = np.dot(embeddings[0], embeddings[1]) / (
-        np.linalg.norm(embeddings[0]) * np.linalg.norm(embeddings[1])
+# =============================================================================
+# Judge Signatures
+# =============================================================================
+
+class ResponseQualityJudge(dspy.Signature):
+    """
+    Judge the overall quality of a customer support response.
+    Consider helpfulness, professionalism, empathy, and completeness.
+    """
+
+    query: str = dspy.InputField(desc="Original customer query")
+    intent: str = dspy.InputField(desc="Customer intent category")
+    response: str = dspy.InputField(desc="Generated support response to evaluate")
+
+    quality_score: float = dspy.OutputField(
+        desc="Quality score from 0.0 to 1.0, where 1.0 is excellent"
     )
-    return float(similarity)
-
-
-def has_acknowledgment(response: str) -> bool:
-    """Check if response acknowledges customer concern."""
-    acknowledgment_patterns = [
-        r"\b(understand|sorry|apologize|appreciate|thank)\b",
-        r"\b(I see|I get|I hear)\b",
-        r"\b(frustrat|concern|issue|problem)\b",
-    ]
-    text_lower = response.lower()
-    return any(re.search(pattern, text_lower) for pattern in acknowledgment_patterns)
-
-
-def has_actionable_steps(response: str) -> bool:
-    """Check if response provides clear steps or information."""
-    # Look for numbered steps, bullet points, or instructional language
-    step_patterns = [
-        r"\b\d+\.",  # Numbered list (1., 2., 3.)
-        r"^[\-\*]",  # Bullet points (-, *)
-        r"\b(follow these steps|here's how|you can|please)\b",
-        r"\b(visit|click|navigate|go to|contact)\b",
-    ]
-    return any(re.search(pattern, response, re.MULTILINE) for pattern in step_patterns)
-
-
-def appropriate_length(response: str, min_words: int = 30, max_words: int = 250) -> bool:
-    """Check if response length is appropriate."""
-    word_count = len(response.split())
-    return min_words <= word_count <= max_words
-
-
-def uses_placeholders(response: str) -> bool:
-    """Check if response uses company placeholders like {{Order Number}}."""
-    return bool(re.search(r"\{\{[^\}]+\}\}", response))
-
-
-def offers_followup(response: str) -> bool:
-    """Check if response offers further assistance."""
-    followup_patterns = [
-        r"\b(if you|should you|feel free|don't hesitate)\b",
-        r"\b(further|additional|more) (help|assistance|questions)\b",
-        r"\b(here to help|happy to assist|reach out)\b",
-    ]
-    text_lower = response.lower()
-    return any(re.search(pattern, text_lower) for pattern in followup_patterns)
-
-
-def compute_quality_score(
-    generated_response: str,
-    gold_response: str,
-    weights: dict[str, float] | None = None,
-) -> dict[str, float]:
-    """
-    Compute comprehensive quality score.
-
-    Args:
-        generated_response: Model-generated response
-        gold_response: Gold standard response from dataset
-        weights: Optional custom weights for metrics
-
-    Returns:
-        Dictionary with individual scores and composite quality score
-    """
-    if weights is None:
-        weights = {
-            "semantic_similarity": 0.30,
-            "has_acknowledgment": 0.15,
-            "has_actionable_steps": 0.20,
-            "appropriate_length": 0.10,
-            "uses_placeholders": 0.10,
-            "offers_followup": 0.15,
-        }
-
-    # Compute individual metrics
-    scores = {
-        "semantic_similarity": semantic_similarity(generated_response, gold_response),
-        "has_acknowledgment": float(has_acknowledgment(generated_response)),
-        "has_actionable_steps": float(has_actionable_steps(generated_response)),
-        "appropriate_length": float(appropriate_length(generated_response)),
-        "uses_placeholders": float(uses_placeholders(generated_response)),
-        "offers_followup": float(offers_followup(generated_response)),
-    }
-
-    # Compute weighted composite score
-    composite_score = sum(scores[k] * weights[k] for k in weights)
-    scores["composite_quality"] = composite_score
-
-    return scores
-
-
-def response_quality_metric(
-    example: dspy.Example,
-    prediction: dspy.Prediction,
-    trace=None,
-) -> float:
-    """
-    DSPy-compatible metric function for response generation.
-
-    Returns composite quality score (0.0-1.0).
-    """
-    scores = compute_quality_score(
-        generated_response=prediction.response,
-        gold_response=example.response,
+    reasoning: str = dspy.OutputField(
+        desc="Brief explanation of the score (2-3 sentences)"
     )
-    return scores["composite_quality"]
+
+
+class HelpfulnessJudge(dspy.Signature):
+    """Judge if the response is helpful and actionable."""
+
+    query: str = dspy.InputField(desc="Original customer query")
+    intent: str = dspy.InputField(desc="Customer intent category")
+    response: str = dspy.InputField(desc="Generated support response")
+
+    is_helpful: bool = dspy.OutputField(
+        desc="True if the response provides useful, actionable information"
+    )
+
+
+class ProfessionalismJudge(dspy.Signature):
+    """Judge if the response is professional and appropriate."""
+
+    response: str = dspy.InputField(desc="Generated support response")
+
+    is_professional: bool = dspy.OutputField(
+        desc="True if the response uses appropriate, professional language"
+    )
+
+
+class EmpathyJudge(dspy.Signature):
+    """Judge if the response shows empathy for the customer's situation."""
+
+    query: str = dspy.InputField(desc="Original customer query")
+    response: str = dspy.InputField(desc="Generated support response")
+
+    shows_empathy: bool = dspy.OutputField(
+        desc="True if the response acknowledges the customer's concern empathetically"
+    )
+
+
+class CompletenessJudge(dspy.Signature):
+    """Judge if the response fully addresses the customer's needs."""
+
+    query: str = dspy.InputField(desc="Original customer query")
+    intent: str = dspy.InputField(desc="Customer intent category")
+    response: str = dspy.InputField(desc="Generated support response")
+
+    completeness_score: float = dspy.OutputField(
+        desc="Score from 0.0 to 1.0 indicating how completely the response addresses the query"
+    )
+
+
+# =============================================================================
+# Judge Module (combines multiple judges)
+# =============================================================================
+
+class MultiDimensionalJudge(dspy.Module):
+    """
+    Combines multiple judge dimensions for comprehensive evaluation.
+
+    Dimensions:
+    - Helpfulness (40%): Does it help the customer?
+    - Professionalism (20%): Is it appropriate?
+    - Empathy (20%): Does it acknowledge concerns?
+    - Completeness (20%): Does it fully address the query?
+    """
+
+    def __init__(self, judge_lm: Optional[dspy.LM] = None):
+        super().__init__()
+        self.helpfulness = dspy.ChainOfThought(HelpfulnessJudge)
+        self.professionalism = dspy.ChainOfThought(ProfessionalismJudge)
+        self.empathy = dspy.ChainOfThought(EmpathyJudge)
+        self.completeness = dspy.ChainOfThought(CompletenessJudge)
+        self.judge_lm = judge_lm
+
+    def forward(self, query: str, intent: str, response: str) -> dspy.Prediction:
+        # Use judge LM if specified (recommended: use different model than generator)
+        context = dspy.context(lm=self.judge_lm) if self.judge_lm else nullcontext()
+
+        with context:
+            h = self.helpfulness(query=query, intent=intent, response=response)
+            p = self.professionalism(response=response)
+            e = self.empathy(query=query, response=response)
+            c = self.completeness(query=query, intent=intent, response=response)
+
+        # Weighted combination
+        score = (
+            0.40 * float(h.is_helpful) +
+            0.20 * float(p.is_professional) +
+            0.20 * float(e.shows_empathy) +
+            0.20 * c.completeness_score
+        )
+
+        return dspy.Prediction(
+            quality_score=score,
+            helpfulness=h.is_helpful,
+            professionalism=p.is_professional,
+            empathy=e.shows_empathy,
+            completeness=c.completeness_score,
+        )
+
+
+# =============================================================================
+# Metric Functions (for DSPy optimizers)
+# =============================================================================
+
+# Simple single-judge approach
+_simple_judge = None
+
+def get_simple_judge():
+    """Lazy initialization of simple judge."""
+    global _simple_judge
+    if _simple_judge is None:
+        _simple_judge = dspy.ChainOfThought(ResponseQualityJudge)
+    return _simple_judge
+
+
+def response_quality_metric(example: dspy.Example, pred: dspy.Prediction, trace=None) -> float:
+    """
+    Simple quality metric using a single LLM judge.
+
+    Returns: Quality score from 0.0 to 1.0
+    """
+    judge = get_simple_judge()
+    result = judge(
+        query=example.query,
+        intent=example.intent,
+        response=pred.response
+    )
+    return result.quality_score
+
+
+# Multi-dimensional judge approach
+_multi_judge = None
+
+def get_multi_judge():
+    """Lazy initialization of multi-dimensional judge."""
+    global _multi_judge
+    if _multi_judge is None:
+        _multi_judge = MultiDimensionalJudge()
+    return _multi_judge
+
+
+def multi_dimensional_metric(example: dspy.Example, pred: dspy.Prediction, trace=None) -> float:
+    """
+    Multi-dimensional quality metric combining helpfulness, professionalism,
+    empathy, and completeness.
+
+    Returns: Weighted quality score from 0.0 to 1.0
+    """
+    judge = get_multi_judge()
+    result = judge(
+        query=example.query,
+        intent=example.intent,
+        response=pred.response
+    )
+    return result.quality_score
+
+
+# =============================================================================
+# Helper: nullcontext for Python < 3.10 compatibility
+# =============================================================================
+
+from contextlib import nullcontext
 ```
 
 ---
@@ -241,35 +379,75 @@ def response_quality_metric(
 ### Create `src/evaluation/response_evaluator.py`
 
 ```python
+"""
+Response Generation Evaluator
+
+Evaluates response generators using LLM-as-Judge metrics.
+"""
+
 import dspy
-from src.evaluation.quality_metrics import compute_quality_score
+from typing import Optional
+from src.evaluation.llm_judge import (
+    get_simple_judge,
+    get_multi_judge,
+    ResponseQualityJudge,
+)
+
 
 def evaluate_response_generator(
     generator: dspy.Module,
     testset: list[dspy.Example],
+    use_multi_dimensional: bool = True,
     verbose: bool = True,
 ) -> dict:
     """
-    Evaluate response generator on test set.
+    Evaluate a response generator on a test set using LLM-as-Judge.
+
+    Args:
+        generator: The response generator module to evaluate
+        testset: List of DSPy Examples with query, intent, response
+        use_multi_dimensional: Use multi-judge (True) or simple judge (False)
+        verbose: Print progress and examples
 
     Returns:
         Dictionary with:
-        - average_quality: Overall quality score
+        - average_quality: Overall quality score (0.0-1.0)
         - individual_scores: Per-example breakdown
-        - metric_averages: Average for each metric dimension
+        - dimension_averages: Average for each judge dimension (if multi)
     """
+    judge = get_multi_judge() if use_multi_dimensional else get_simple_judge()
     all_scores = []
 
     for i, example in enumerate(testset):
         # Generate response
         prediction = generator(query=example.query, intent=example.intent)
 
-        # Compute quality
-        scores = compute_quality_score(
-            generated_response=prediction.response,
-            gold_response=example.response,
-        )
+        # Judge quality
+        if use_multi_dimensional:
+            judgment = judge(
+                query=example.query,
+                intent=example.intent,
+                response=prediction.response
+            )
+            scores = {
+                "quality_score": judgment.quality_score,
+                "helpfulness": judgment.helpfulness,
+                "professionalism": judgment.professionalism,
+                "empathy": judgment.empathy,
+                "completeness": judgment.completeness,
+            }
+        else:
+            judgment = judge(
+                query=example.query,
+                intent=example.intent,
+                response=prediction.response
+            )
+            scores = {
+                "quality_score": judgment.quality_score,
+                "reasoning": judgment.reasoning,
+            }
 
+        # Add metadata
         scores["query"] = example.query
         scores["intent"] = example.intent
         scores["generated"] = prediction.response
@@ -277,172 +455,270 @@ def evaluate_response_generator(
 
         all_scores.append(scores)
 
-        if verbose and i < 5:  # Print first 5 examples
+        if verbose and i < 3:
             print(f"\n--- Example {i+1} ---")
-            print(f"Query: {example.query[:100]}...")
-            print(f"Quality: {scores['composite_quality']:.3f}")
+            print(f"Query: {example.query[:80]}...")
+            print(f"Intent: {example.intent}")
+            print(f"Quality: {scores['quality_score']:.3f}")
+            if use_multi_dimensional:
+                print(f"  Helpful: {scores['helpfulness']}")
+                print(f"  Professional: {scores['professionalism']}")
+                print(f"  Empathetic: {scores['empathy']}")
+                print(f"  Complete: {scores['completeness']:.2f}")
+
+        if verbose and (i + 1) % 10 == 0:
+            print(f"Evaluated {i + 1}/{len(testset)} examples...")
 
     # Compute averages
-    metric_averages = {}
-    for key in ["semantic_similarity", "has_acknowledgment", "has_actionable_steps",
-                "appropriate_length", "uses_placeholders", "offers_followup", "composite_quality"]:
-        metric_averages[key] = sum(s[key] for s in all_scores) / len(all_scores)
+    avg_quality = sum(s["quality_score"] for s in all_scores) / len(all_scores)
 
-    return {
-        "average_quality": metric_averages["composite_quality"],
+    result = {
+        "average_quality": avg_quality,
         "individual_scores": all_scores,
-        "metric_averages": metric_averages,
+        "total_examples": len(testset),
     }
+
+    if use_multi_dimensional:
+        result["dimension_averages"] = {
+            "helpfulness": sum(s["helpfulness"] for s in all_scores) / len(all_scores),
+            "professionalism": sum(s["professionalism"] for s in all_scores) / len(all_scores),
+            "empathy": sum(s["empathy"] for s in all_scores) / len(all_scores),
+            "completeness": sum(s["completeness"] for s in all_scores) / len(all_scores),
+        }
+
+    if verbose:
+        print(f"\n=== Final Results ===")
+        print(f"Average Quality: {avg_quality:.3f}")
+        if use_multi_dimensional:
+            print("Dimension Averages:")
+            for dim, val in result["dimension_averages"].items():
+                print(f"  {dim}: {val:.3f}")
+
+    return result
 ```
 
 ---
 
-## Step 5: Running the Pipeline
+## Step 5: Running the Optimization Pipeline
 
 ### Usage Example
 
 ```python
 from dotenv import load_dotenv
 import dspy
+
 from src.data.loader import load_response_generation_data
-from src.modules.response_generator import ResponseGenerator
-from src.evaluation.quality_metrics import response_quality_metric
-from src.optimizers.runner import run_mipro_v2
+from src.modules.response_generator import (
+    ResponseGenerator,
+    create_response_generator,
+    get_optimized_instructions,
+)
+from src.evaluation.llm_judge import response_quality_metric
 
 # Setup
 load_dotenv()
-lm = dspy.LM("openai/gpt-3.5-turbo")
-dspy.configure(lm=lm)
+
+# Use different models for generation vs judging to avoid bias
+generator_lm = dspy.LM("openai/gpt-3.5-turbo")
+judge_lm = dspy.LM("openai/gpt-4o-mini")  # Stronger model as judge
+
+dspy.configure(lm=generator_lm)
 
 # Load data
-trainset, testset = load_response_generation_data(n_train=200, n_test=100)
+trainset, testset = load_response_generation_data(n_train=200, n_test=50)
+print(f"Loaded: {len(trainset)} train, {len(testset)} test")
 
-# Run optimization
-optimized_generator, result = run_mipro_v2(
-    trainset=trainset,
-    testset=testset,
-    classifier_class=ResponseGenerator,
-    metric_fn=response_quality_metric,
+# Create baseline generator
+baseline = create_response_generator()
+
+# Evaluate baseline
+print("\n=== Baseline Evaluation ===")
+from src.evaluation.response_evaluator import evaluate_response_generator
+baseline_results = evaluate_response_generator(baseline, testset[:20])
+
+# Run MIPROv2 optimization
+print("\n=== Running MIPROv2 Optimization ===")
+optimizer = dspy.MIPROv2(
+    metric=response_quality_metric,
     auto="light",
+    num_threads=4,
 )
 
-# Results
-print(f"Baseline Quality: {result.baseline_accuracy:.1f}%")
-print(f"Optimized Quality: {result.optimized_accuracy:.1f}%")
-print(f"Improvement: {result.improvement:+.1f}%")
+optimized = optimizer.compile(
+    baseline.deepcopy(),
+    trainset=trainset,
+    max_bootstrapped_demos=4,
+    max_labeled_demos=4,
+)
+
+# Inspect what MIPROv2 discovered
+print("\n=== Optimized Instructions ===")
+print(get_optimized_instructions(optimized))
+
+# Evaluate optimized generator
+print("\n=== Optimized Evaluation ===")
+optimized_results = evaluate_response_generator(optimized, testset[:20])
+
+# Compare
+print("\n=== Comparison ===")
+print(f"Baseline Quality:  {baseline_results['average_quality']:.3f}")
+print(f"Optimized Quality: {optimized_results['average_quality']:.3f}")
+print(f"Improvement: {optimized_results['average_quality'] - baseline_results['average_quality']:+.3f}")
+
+# Save optimized module
+optimized.save("results/response_generator_optimized.json")
 ```
 
 ---
 
-## Step 6: Visualization
+## Step 6: Key Research Questions
 
-### Add to `src/optimizers/runner.py`
+With LLM-as-Judge, you can now investigate:
 
-Create response-specific plots:
-- Quality score breakdown (semantic, structural, tone)
-- Example comparisons (baseline vs optimized vs GPT-4)
-- Cost-quality tradeoff curve
+### 1. What Instructions Does MIPROv2 Generate?
 
----
-
-## Expected Workflow
-
-```bash
-# 1. Run classification (already done)
-python -m src.optimizers.runner -o both -t 100 -e 50
-
-# 2. Run response generation baseline
-python -m src.evaluation.response_evaluator --baseline
-
-# 3. Run response generation optimization
-python -m src.evaluation.response_evaluator --optimize
-
-# 4. Compare with GPT-4
-python -m src.evaluation.response_evaluator --gpt4-baseline
-
-# 5. Generate comparison report
-python -m src.evaluation.generate_report
-```
-
----
-
-## Key Implementation Notes
-
-### 1. Optimization Target
-Unlike classification (which optimizes for accuracy), response generation optimizes for **composite quality score** (multi-dimensional).
-
-### 2. Metric Weights
-You can adjust metric weights based on business priorities:
 ```python
-# Example: Prioritize accuracy over formatting
-weights = {
-    "semantic_similarity": 0.50,  # Increased
-    "has_acknowledgment": 0.10,
-    "has_actionable_steps": 0.20,
-    "appropriate_length": 0.05,  # Decreased
-    "uses_placeholders": 0.05,   # Decreased
-    "offers_followup": 0.10,
-}
+# After optimization
+print("=== Discovered System Prompt ===")
+print(get_optimized_instructions(optimized))
 ```
 
-### 3. Human Evaluation
-For validation, sample 100 examples and collect human ratings:
-- Use Google Forms or custom web interface
-- Show responses without labels (blind evaluation)
-- Ask: "Which response would you prefer?" + ratings
+Compare instructions across:
+- Different optimization runs (stability)
+- Different judge configurations (what matters)
+- Bootstrap vs MIPROv2 (optimizer differences)
 
-### 4. GPT-4 Comparison
-To establish upper bound:
+### 2. Which Instruction Components Correlate with Quality?
+
+Analyze the optimized instructions for common patterns:
+- Empathy language ("acknowledge", "understand")
+- Structure guidance ("numbered steps", "clear")
+- Tone instructions ("professional", "warm")
+- Constraints ("under 150 words", "no promises")
+
+### 3. How Do Different Judges Affect Optimization?
+
+Try different judge configurations:
 ```python
-lm_gpt4 = dspy.LM("openai/gpt-4")
-with dspy.context(lm=lm_gpt4):
-    gpt4_generator = dspy.ChainOfThought(ResponseGenerator)
-    gpt4_results = evaluate_response_generator(gpt4_generator, testset)
+# Judge A: Prioritize helpfulness
+weights_helpful = {"helpfulness": 0.6, "professionalism": 0.2, ...}
+
+# Judge B: Prioritize empathy
+weights_empathy = {"empathy": 0.5, "helpfulness": 0.3, ...}
+
+# Compare resulting instructions
 ```
+
+---
+
+## Cost Considerations
+
+### LLM-as-Judge Adds API Calls
+
+During optimization, every evaluation requires judge calls:
+- MIPROv2 `auto="light"`: ~50-100 evaluations
+- Each evaluation: 1 generation + 1-4 judge calls
+- Total: ~200-500 API calls per optimization run
+
+### Mitigation Strategies
+
+1. **Use cheap judge model**: `gpt-4o-mini` or `claude-3-haiku`
+2. **Smaller eval batches**: Reduce trainset size during development
+3. **Cache judge responses**: Same response → same score
+4. **Simple judge first**: Single judge vs multi-dimensional
+
+### Cost Estimate
+
+| Model | Role | Cost/1K tokens | Calls | Est. Cost |
+|-------|------|----------------|-------|-----------|
+| GPT-3.5 | Generator | $0.0005 | 200 | ~$0.10 |
+| GPT-4o-mini | Judge | $0.00015 | 800 | ~$0.12 |
+| **Total** | | | | **~$0.25/run** |
 
 ---
 
 ## Troubleshooting
 
-### Issue: Semantic similarity always high (>0.9)
-**Solution**: Model may be copying gold responses. Check that training doesn't include test set.
+### Issue: Judge scores are always high (>0.9)
 
-### Issue: Quality scores too low (<0.3)
-**Solution**:
-- Try GPT-4 baseline to see if it's a model limitation
-- Check if prompts are too restrictive
-- Validate quality metrics aren't too harsh
+**Cause**: Judge is too lenient or signature is vague.
 
-### Issue: MIPROv2 optimization doesn't improve
+**Solution**: Make judge criteria more specific:
+```python
+quality_score: float = dspy.OutputField(
+    desc="Score from 0.0 to 1.0. Give 0.8+ only if response is excellent. "
+         "Average responses should score 0.5-0.7. Poor responses below 0.4."
+)
+```
+
+### Issue: Scores vary wildly for same response
+
+**Cause**: LLM non-determinism.
+
 **Solution**:
-- Increase training set size (200 → 300)
-- Try `auto="medium"` instead of `auto="light"`
-- Check metric function is working correctly
+- Set temperature=0 for judge
+- Average multiple judge calls
+- Use more specific criteria
+
+### Issue: Optimization doesn't improve scores
+
+**Solutions**:
+1. Increase training set (200 → 300 examples)
+2. Try `auto="medium"` instead of `auto="light"`
+3. Check if judge is properly differentiating quality
+4. Verify judge uses different LM than generator
+
+### Issue: Judge and generator use same model (circular)
+
+**Problem**: Model might judge its own outputs favorably.
+
+**Solution**: Always use different models:
+```python
+generator_lm = dspy.LM("openai/gpt-3.5-turbo")
+judge_lm = dspy.LM("openai/gpt-4o-mini")
+# or
+judge_lm = dspy.LM("anthropic/claude-3-haiku")
+```
 
 ---
 
 ## Success Criteria
 
 This implementation will be successful if:
-- ✅ Baseline quality score: 0.50-0.60
-- ✅ Optimized quality score: 0.70-0.80
-- ✅ GPT-4 quality score: 0.80-0.90
-- ✅ Clear improvement over baseline (>0.15 absolute gain)
+
+| Metric | Target |
+|--------|--------|
+| Baseline quality | 0.45 - 0.60 |
+| Optimized quality | 0.70 - 0.85 |
+| Improvement | > 0.15 (15+ points) |
+| GPT-4 baseline | 0.80 - 0.90 |
+| Optimized GPT-3.5 vs GPT-4 | ≥ 80% |
+
+---
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/modules/response_generator.py` | ResponseGenerator signature |
+| `src/evaluation/llm_judge.py` | LLM-as-Judge signatures and metrics |
+| `src/evaluation/response_evaluator.py` | Evaluation runner |
+| `results/response_generator_optimized.json` | Saved optimized module |
 
 ---
 
 ## Next Steps
 
-1. Implement data loader extension
-2. Create ResponseGenerator module
-3. Implement quality metrics
-4. Run baseline evaluation
-5. Run MIPROv2 optimization
-6. Compare results and visualize
-
-**Estimated time**: 2-3 days of focused work
+1. **Implement** the modules above
+2. **Test** with small dataset (n=20) to verify pipeline works
+3. **Run** baseline evaluation
+4. **Optimize** with MIPROv2
+5. **Analyze** the discovered instructions
+6. **Compare** with GPT-4 baseline
+7. **Document** findings for research output
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: January 4, 2026
+**Document Version**: 2.0
+**Last Updated**: January 2026
+**Major Change**: Switched from rule-based metrics to LLM-as-Judge

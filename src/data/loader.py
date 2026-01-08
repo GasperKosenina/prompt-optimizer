@@ -59,6 +59,23 @@ def create_intent_examples(df: pd.DataFrame) -> list[dspy.Example]:
     return examples
 
 
+def create_query_examples(df: pd.DataFrame) -> list[dspy.Example]:
+    """
+    Convert DataFrame to DSPy Examples with query + intent only (no gold response).
+
+    Use this for principle-based evaluation where we judge quality without
+    comparing to gold responses.
+    """
+    examples = []
+    for _, row in df.iterrows():
+        example = dspy.Example(
+            query=row["instruction"],
+            intent=row["intent"],
+        ).with_inputs("query", "intent")
+        examples.append(example)
+    return examples
+
+
 def create_response_examples(
     df: pd.DataFrame, include_intent: bool = True
 ) -> list[dspy.Example]:
@@ -239,6 +256,34 @@ def load_response_generation_data(
     # Convert to DSPy Examples
     trainset = create_response_examples(train_df, include_intent=include_intent)
     testset = create_response_examples(test_df, include_intent=include_intent)
+
+    return trainset, testset
+
+
+def load_query_data(
+    n_train: int | None = None,
+    n_test: int | None = None,
+    test_size: float = 0.2,
+    random_state: int = 42,
+) -> tuple[list[dspy.Example], list[dspy.Example]]:
+    """
+    Load query + intent data WITHOUT gold responses.
+
+    Use this for principle-based evaluation where we judge quality
+    without comparing to gold responses.
+    """
+    df = load_bitext_dataset()
+
+    train_df, test_df = split_dataset(df, test_size=test_size, random_state=random_state)
+
+    if n_train is not None:
+        train_df = get_stratified_sample(train_df, n_train, random_state=random_state)
+
+    if n_test is not None:
+        test_df = get_stratified_sample(test_df, n_test, random_state=random_state)
+
+    trainset = create_query_examples(train_df)
+    testset = create_query_examples(test_df)
 
     return trainset, testset
 

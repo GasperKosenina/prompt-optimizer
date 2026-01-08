@@ -1,5 +1,10 @@
 {
-    "venvPath": ".",
-    "venv": "venv",
-    "extraPaths": ["src"]
+  "venvPath": ".",
+  "venv": "venv",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "Darwin",
+  "typeCheckingMode": "basic",
+  "useLibraryCodeForTypes": true,
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false
 }
