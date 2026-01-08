@@ -274,7 +274,9 @@ def load_query_data(
     """
     df = load_bitext_dataset()
 
-    train_df, test_df = split_dataset(df, test_size=test_size, random_state=random_state)
+    train_df, test_df = split_dataset(
+        df, test_size=test_size, random_state=random_state
+    )
 
     if n_train is not None:
         train_df = get_stratified_sample(train_df, n_train, random_state=random_state)
@@ -298,6 +300,67 @@ def get_category_labels() -> list[str]:
     """Return list of all 11 category labels in the dataset."""
     df = load_bitext_dataset()
     return sorted(df["category"].unique().tolist())
+
+
+def load_math_problems(
+    n_train: int | None = None,
+    n_test: int | None = None,
+    random_state: int = 42,
+) -> tuple[list[dspy.Example], list[dspy.Example]]:
+    """
+    Load GSM8K math word problems for DSPy.
+
+    Args:
+        n_train: Number of training examples (None = use all)
+        n_test: Number of test examples (None = use all)
+        random_state: Random seed for reproducibility
+
+    Returns:
+        Tuple of (trainset, testset) as DSPy Examples
+    """
+    import json
+    import random
+
+    # Path to GSM8K datasets
+    data_dir = Path(__file__).parent.parent.parent / "datasets"
+
+    # Load train data
+    train_data = []
+    with open(data_dir / "train.jsonl") as f:
+        for line in f:
+            train_data.append(json.loads(line))
+
+    # Load test data
+    test_data = []
+    with open(data_dir / "test.jsonl") as f:
+        for line in f:
+            test_data.append(json.loads(line))
+
+    # Sample if requested
+    if n_train is not None:
+        random.seed(random_state)
+        train_data = random.sample(train_data, min(n_train, len(train_data)))
+
+    if n_test is not None:
+        random.seed(random_state)
+        test_data = random.sample(test_data, min(n_test, len(test_data)))
+
+    # Convert to DSPy Examples
+    trainset = [
+        dspy.Example(question=item["question"], answer=item["answer"]).with_inputs(
+            "question"
+        )
+        for item in train_data
+    ]
+
+    testset = [
+        dspy.Example(question=item["question"], answer=item["answer"]).with_inputs(
+            "question"
+        )
+        for item in test_data
+    ]
+
+    return trainset, testset
 
 
 # Quick test when run directly
