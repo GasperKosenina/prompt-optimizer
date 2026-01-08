@@ -1,7 +1,10 @@
-"""Response Generation Evaluator"""
+"""Response Generation Evaluator
+
+Simple evaluator using a single strict quality judge.
+"""
 
 import dspy
-from src.evaluation.llm_judge import get_judge, ComparativeJudge
+from src.evaluation.llm_judge import ResponseQualityJudge, ComparativeJudge
 
 
 def evaluate(
@@ -9,20 +12,35 @@ def evaluate(
     testset: list[dspy.Example],
     verbose: bool = True,
 ) -> dict:
-    """Evaluate a response generator using strict principle-based judges."""
-    judge = get_judge()
+    """
+    Evaluate a response generator using a single strict quality judge.
+
+    Args:
+        generator: The response generator module to evaluate
+        testset: List of examples with query and intent
+        verbose: Print progress and examples
+
+    Returns:
+        Dictionary with average_quality, scores list, and statistics
+    """
+    # Use single strict judge (simpler, faster, easier to calibrate)
+    judge = dspy.ChainOfThought(ResponseQualityJudge)
     all_scores = []
 
+    if verbose:
+        print(f"Evaluating {len(testset)} examples...")
+
     for i, example in enumerate(testset):
+        # Generate response
         prediction = generator(query=example.query, intent=example.intent)
-        judgment = judge(query=example.query, intent=example.intent, response=prediction.response)
+
+        # Judge quality
+        judgment = judge(
+            query=example.query, intent=example.intent, response=prediction.response
+        )
 
         scores = {
             "quality_score": judgment.quality_score,
-            "helpfulness": judgment.helpfulness,
-            "completeness": judgment.completeness,
-            "empathy": judgment.empathy,
-            "professionalism": judgment.professionalism,
             "reasoning": judgment.reasoning,
             "query": example.query,
             "intent": example.intent,
@@ -30,38 +48,50 @@ def evaluate(
         }
         all_scores.append(scores)
 
+        # Show first 3 examples in detail
         if verbose and i < 3:
             print(f"\n--- Example {i+1} ---")
             print(f"Query: {example.query[:80]}...")
             print(f"Intent: {example.intent}")
             print(f"Quality: {scores['quality_score']:.2f}")
-            print(f"  Helpfulness:    {scores['helpfulness']:.2f}")
-            print(f"  Completeness:   {scores['completeness']:.2f}")
-            print(f"  Empathy:        {scores['empathy']:.2f}")
-            print(f"  Professionalism:{scores['professionalism']:.2f}")
+            print(f"Reasoning: {scores['reasoning'][:100]}...")
 
+        # Progress indicator every 10 examples
         if verbose and (i + 1) % 10 == 0:
-            print(f"Evaluated {i + 1}/{len(testset)}...")
+            print(f"Progress: {i + 1}/{len(testset)} examples evaluated")
 
-    avg = lambda key: sum(s[key] for s in all_scores) / len(all_scores)
+    # Calculate statistics
+    scores_list = [s["quality_score"] for s in all_scores]
+    avg_quality = sum(scores_list) / len(scores_list)
+    min_quality = min(scores_list)
+    max_quality = max(scores_list)
 
     result = {
-        "average_quality": avg("quality_score"),
-        "dimensions": {
-            "helpfulness": avg("helpfulness"),
-            "completeness": avg("completeness"),
-            "empathy": avg("empathy"),
-            "professionalism": avg("professionalism"),
-        },
+        "average_quality": avg_quality,
+        "min_quality": min_quality,
+        "max_quality": max_quality,
         "scores": all_scores,
         "n": len(testset),
     }
 
     if verbose:
-        print("\n=== Results ===")
-        print(f"Quality: {result['average_quality']:.2f}")
-        for dim, val in result["dimensions"].items():
-            print(f"  {dim}: {val:.2f}")
+        print("\n" + "=" * 60)
+        print("EVALUATION RESULTS")
+        print("=" * 60)
+        print(f"Examples evaluated: {len(testset)}")
+        print(f"Average quality:    {avg_quality:.3f}")
+        print(f"Min quality:        {min_quality:.3f}")
+        print(f"Max quality:        {max_quality:.3f}")
+        print(f"Range:              {max_quality - min_quality:.3f}")
+
+        # Show score distribution
+        bins = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        print(f"\nScore distribution:")
+        for i in range(len(bins) - 1):
+            count = sum(1 for s in scores_list if bins[i] <= s < bins[i + 1])
+            bar = "█" * count
+            print(f"  {bins[i]:.1f}-{bins[i+1]:.1f}: {bar} ({count})")
+        print("=" * 60)
 
     return result
 
@@ -91,11 +121,13 @@ def compare_responses(
         else:
             results["ties"] += 1
 
-        results["comparisons"].append({
-            "query": example.query,
-            "winner": judgment.winner,
-            "reasoning": judgment.reasoning,
-        })
+        results["comparisons"].append(
+            {
+                "query": example.query,
+                "winner": judgment.winner,
+                "reasoning": judgment.reasoning,
+            }
+        )
 
         if verbose and i < 3:
             print(f"\n--- Comparison {i+1} ---")
