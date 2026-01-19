@@ -9,7 +9,10 @@
       "Bash(source:*)",
       "Bash(cat:*)",
       "Bash(du:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(jupyter nbconvert:*)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)"
     ]
   }
 }
