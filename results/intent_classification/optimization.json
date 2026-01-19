@@ -1,0 +1,23 @@
+{
+  "task": "intent_classification",
+  "dataset": "bitext_27k",
+  "baseline": {
+    "accuracy": 92.0,
+    "correct": 46,
+    "total": 50
+  },
+  "optimized": {
+    "accuracy": 90.0,
+    "correct": 45,
+    "total": 50
+  },
+  "improvement": {
+    "absolute": -2.0,
+    "percentage": -2.1739130434782608
+  },
+  "dataset_sizes": {
+    "train": 200,
+    "test": 50
+  },
+  "optimizer": "BootstrapFewShot"
+}

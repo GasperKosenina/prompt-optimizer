@@ -1,0 +1,57 @@
+{
+  "predict": {
+    "traces": [],
+    "train": [],
+    "demos": [
+      {
+        "augmented": true,
+        "question": "Macey saves to buy herself a shirt that costs $3. She was able to save $1.50 already. How many weeks does she need to save for the remaining amount if she saves $0.50 per week?",
+        "reasoning": "Macey still needs to save $3 - $1.50 = $1.50.\nWith a weekly saving of $0.50, the number of weeks needed can be calculated by dividing the remaining amount by the weekly saving: $1.50 / $0.50 = 3 weeks.",
+        "answer": "3"
+      },
+      {
+        "augmented": true,
+        "question": "Barry stands on his head for 10 minutes at a time, but then he must sit for 5 minutes before he can take another turn standing on his head.  How many turns can Barry take standing on his head during a single 2-hour period?",
+        "reasoning": "To calculate the number of turns Barry can take standing on his head during a single 2-hour period:\n1. We first determine how many cycles of standing and sitting he can complete in 2 hours.\n2. Each cycle includes 10 minutes of standing and 5 minutes of sitting, which totals to 10 + 5 = 15 minutes.\n3. Since there are 60 minutes in an hour, there are 2 hours * 60 minutes = 120 minutes in a 2-hour period.\n4. Thus, Barry can complete 120 minutes / 15 minutes per cycle = 8 cycles in 2 hours.",
+        "answer": "Barry can take a total of <<8>>8 turns standing on his head during a single 2-hour period."
+      },
+      {
+        "augmented": true,
+        "question": "Giselle had 20 female doves in a birdhouse. After a month, the doves laid 3 eggs each. If 3/4 of the eggs hatched, calculate the total number of doves Giselle has now.",
+        "reasoning": "Initially, Giselle had 20 female doves in the birdhouse.\nAfter the doves laid eggs, they will have 20 * 3 = 60 eggs.\nGiven that 3/4 of the eggs hatched, the number of hatched eggs is 60 * 3/4 = 45.\nSince each dove hatches from an egg, the total number of doves Giselle has now is 20 original doves + 45 new doves = 65 doves.",
+        "answer": "65"
+      },
+      {
+        "augmented": true,
+        "question": "There were 40 kids on Lake Pleasant. A fourth of the kids went tubing, but only half of the tubers went rafting. How many of the kids who joined the rafting excursion were also on the tubing excursion?",
+        "reasoning": "Let's first find out how many kids went tubing. \n1/4 of 40 kids went tubing, so (1/4) * 40 = 40/4 = <<40/4=10>>10 kids went tubing. \nThen, half of the tubers went rafting, so (1/2) * 10 = 10/2 = <<10/2=5>>5 kids who went tubing also went rafting.",
+        "answer": "5"
+      }
+    ],
+    "signature": {
+      "instructions": "Solve math word problems using step-by-step reasoning.",
+      "fields": [
+        {
+          "prefix": "Question:",
+          "description": "A math word problem requiring arithmetic reasoning"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "Step-by-step reasoning showing how to solve the problem"
+        },
+        {
+          "prefix": "Answer:",
+          "description": "The final numerical answer (just the number)"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

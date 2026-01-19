@@ -1,0 +1,36 @@
+{
+  "predict": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "Given a customer support query and the detected customer intent, use the `Predict(query, intent)` module to predict the reasoning behind the query and generate a tailored response that aligns with both the query and intent. Ensure that the response is professional, empathetic, and provides clear next steps for the customer.",
+      "fields": [
+        {
+          "prefix": "Query:",
+          "description": "Customer support query or message"
+        },
+        {
+          "prefix": "Intent:",
+          "description": "Detected customer intent (e.g., cancel_order, track_order)"
+        },
+        {
+          "prefix": "Reasoning: Let's think step by step in order to",
+          "description": "${reasoning}"
+        },
+        {
+          "prefix": "Response:",
+          "description": "Professional, empathetic support response with clear next steps"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

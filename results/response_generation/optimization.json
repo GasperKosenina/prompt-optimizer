@@ -1,0 +1,22 @@
+{
+  "baseline": {
+    "average_quality": 0.7128,
+    "min_quality": 0.4,
+    "max_quality": 0.92,
+    "instructions": "Generate a helpful customer support response."
+  },
+  "optimized": {
+    "average_quality": 0.735,
+    "min_quality": 0.6,
+    "max_quality": 0.95,
+    "instructions": "Given a customer support query and the detected customer intent, use the `Predict(query, intent)` module to predict the reasoning behind the query and generate a tailored response that aligns with both the query and intent. Ensure that the response is professional, empathetic, and provides clear next steps for the customer."
+  },
+  "improvement": {
+    "absolute": 0.022199999999999998,
+    "percentage": 3.114478114478114
+  },
+  "dataset": {
+    "train_size": 100,
+    "test_size": 50
+  }
+}

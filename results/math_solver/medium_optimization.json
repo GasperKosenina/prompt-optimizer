@@ -1,0 +1,15 @@
+{
+  "baseline": {
+    "accuracy": 64.0,
+    "correct": 32
+  },
+  "optimizations": [
+    {
+      "strategy": "MIPROv2 Medium",
+      "accuracy": 88.0,
+      "correct": 44,
+      "time_seconds": 777.1368010044098,
+      "trainset_size": 300
+    }
+  ]
+}

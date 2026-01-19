@@ -1,75 +1,49 @@
 """
 Intent Classification with DSPy
 
-This script demonstrates classifying customer support queries into intent categories.
-This is Task 1 from the project overview - a good starting point because:
-- Objective evaluation (exact match accuracy)
-- Fast and cheap to run
-- Clear success criteria
+Demonstrates classifying customer support queries into 27 intent categories
+using the Bitext dataset. This establishes a baseline before optimization.
 """
 
 import dspy
 from dotenv import load_dotenv
 
-# Load API keys from .env file
-load_dotenv()
+from src.data.loader import load_intent_classification_data
+from src.modules.intent_classifier import (
+    create_classifier,
+    evaluate,
+    INTENT_LABELS,
+)
 
-# Configure DSPy with GPT-3.5-turbo (cost-effective)
+# Setup
+load_dotenv()
 lm = dspy.LM("openai/gpt-3.5-turbo")
 dspy.configure(lm=lm)
 
+print("INTENT CLASSIFICATION BASELINE")
+print("=" * 50)
+print(f"Task: Classify queries into {len(INTENT_LABELS)} intent categories")
 
-class IntentClassifier(dspy.Signature):
-    """Classify customer support query into an intent category."""
+# Load dataset
+print("\n[1/2] Loading Bitext dataset...")
+trainset, testset = load_intent_classification_data(n_train=100, n_test=50)
+print(f"  Loaded {len(trainset)} train, {len(testset)} test examples")
 
-    query: str = dspy.InputField(desc="Customer support query")
-    intent: str = dspy.OutputField(
-        desc="Intent category: REFUND, ORDER_STATUS, COMPLAINT, RETURN, BILLING, SHIPPING, PRODUCT_INFO, or OTHER"
-    )
+# Create baseline classifier
+print("\n[2/2] Evaluating baseline classifier...")
+classifier = create_classifier()
+results = evaluate(classifier, testset, verbose=False)
 
+# Summary
+print("\n" + "=" * 50)
+print("BASELINE RESULTS")
+print("=" * 50)
+print(f"Accuracy: {results['accuracy']:.1f}% ({results['correct']}/{results['total']})")
 
-def main():
-    # Create predictor
-    classifier = dspy.Predict(IntentClassifier)
+# Show a few example predictions
+print("\nSample predictions:")
+for pred in results["predictions"][:5]:
+    status = "✓" if pred["correct"] else "✗"
+    print(f"  {status} '{pred['query'][:40]}...' → {pred['predicted']}")
 
-    # Test queries covering different intents
-    test_queries = [
-        # REFUND
-        "I want my money back for this broken product",
-        "Can I get a refund for my order?",
-        # ORDER_STATUS
-        "Where is my package?",
-        "When will my order arrive?",
-        # COMPLAINT
-        "Your service is terrible, I'm very upset",
-        "This is the worst experience I've ever had",
-        # RETURN
-        "How do I return this item?",
-        "I need to send this product back",
-        # BILLING
-        "I was charged twice for my order",
-        "There's an error on my invoice",
-        # SHIPPING
-        "Do you ship to Canada?",
-        "What are your shipping options?",
-        # PRODUCT_INFO
-        "What sizes does this come in?",
-        "Is this product compatible with iPhone?",
-    ]
-
-    print("=" * 60)
-    print("Intent Classification Demo")
-    print("=" * 60)
-
-    for query in test_queries:
-        result = classifier(query=query)
-        print(f"\nQuery: {query}")
-        print(f"Intent: {result.intent}")
-
-    print("\n" + "=" * 60)
-    print("Classification complete!")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    main()
+print("\nNext: Run 03_optimize_classifier.py to improve this baseline")

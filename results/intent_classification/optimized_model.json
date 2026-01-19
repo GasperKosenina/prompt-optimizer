@@ -1,0 +1,47 @@
+{
+  "traces": [],
+  "train": [],
+  "demos": [
+    {
+      "augmented": true,
+      "query": "is it possible to make a complaint against your company?",
+      "intent": "complaint"
+    },
+    {
+      "augmented": true,
+      "query": "how to check the status of purchase {{Order Number}}?",
+      "intent": "track_order"
+    },
+    {
+      "augmented": true,
+      "query": "help me to leave feedback for ur services",
+      "intent": "review"
+    },
+    {
+      "augmented": true,
+      "query": "where could I cancel purchase {{Order Number}}?",
+      "intent": "cancel_order"
+    }
+  ],
+  "signature": {
+    "instructions": "Classify a customer support query into one of 27 intent categories.\n\nThe intent represents what action or information the customer is seeking.\nChoose the most specific intent that matches the customer's request.",
+    "fields": [
+      {
+        "prefix": "Query:",
+        "description": "A customer support query or message"
+      },
+      {
+        "prefix": "Intent:",
+        "description": "The intent category. Must be one of: cancel_order, change_order, change_shipping_address, check_cancellation_fee, check_invoice, check_payment_methods, check_refund_policy, complaint, contact_customer_service, contact_human_agent, create_account, delete_account, delivery_options, delivery_period, edit_account, get_invoice, get_refund, newsletter_subscription, payment_issue, place_order, recover_password, registration_problems, review, set_up_shipping_address, switch_account, track_order, track_refund"
+      }
+    ]
+  },
+  "lm": null,
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

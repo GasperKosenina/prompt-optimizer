@@ -1,0 +1,22 @@
+{
+  "task": "math_word_problems",
+  "dataset": "gsm8k",
+  "baseline": {
+    "accuracy": 64.0,
+    "correct": 32,
+    "total": 50
+  },
+  "optimized": {
+    "accuracy": 84.0,
+    "correct": 42,
+    "total": 50
+  },
+  "improvement": {
+    "absolute": 20.0,
+    "percentage": 31.25
+  },
+  "dataset_sizes": {
+    "train": 200,
+    "test": 50
+  }
+}

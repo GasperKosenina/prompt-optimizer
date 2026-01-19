@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "WebFetch(domain:dspy.ai)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(cat:*)",
+      "Bash(du:*)",
+      "Bash(wc:*)"
+    ]
+  }
+}

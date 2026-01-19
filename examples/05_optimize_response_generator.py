@@ -119,17 +119,17 @@ results = {
 }
 
 # Save results to JSON
-results_dir = Path("results")
-results_dir.mkdir(exist_ok=True)
+results_dir = Path("results/response_generation")
+results_dir.mkdir(parents=True, exist_ok=True)
 
-results_path = results_dir / "response_generator_optimization.json"
+results_path = results_dir / "optimization.json"
 with open(results_path, "w") as f:
     json.dump(results, f, indent=2)
 
 print(f"  ✓ Results saved to {results_path}")
 
 # Save optimized module
-optimized_path = results_dir / "response_generator_optimized.json"
+optimized_path = results_dir / "optimized_model.json"
 optimized.save(str(optimized_path))
 print(f"  ✓ Optimized module saved to {optimized_path}")
 
