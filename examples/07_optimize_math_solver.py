@@ -1,18 +1,17 @@
 """
-Optimize Math Solver with MIPROv2
-
-Demonstrates prompt optimization for math reasoning:
-1. Establish baseline accuracy
-2. Run MIPROv2 to discover better reasoning patterns
-3. Compare baseline vs optimized performance
-4. Show example improvements
+Usage:
+    python examples/07_optimize_math_solver.py
+    python examples/07_optimize_math_solver.py --auto medium
+    python examples/07_optimize_math_solver.py --auto light --train-size 200 --test-size 50
 """
 
-from dotenv import load_dotenv
-import dspy
-from dspy.teleprompt import MIPROv2
+import argparse
 import json
 from pathlib import Path
+
+import dspy
+from dotenv import load_dotenv
+from dspy.teleprompt import MIPROv2
 
 from src.data.loader import load_math_problems
 from src.modules.math_solver import (
@@ -22,178 +21,188 @@ from src.modules.math_solver import (
     answers_match,
 )
 
-# Setup
-load_dotenv()
-lm = dspy.LM("openai/gpt-3.5-turbo")
-dspy.configure(lm=lm)
 
-print("MATH SOLVER OPTIMIZATION")
-print("=" * 50)
-print("Task: Grade-school math word problems (GSM8K)")
+def parse_args():
+    parser = argparse.ArgumentParser(description="Optimize math solver with MIPROv2")
+    parser.add_argument(
+        "--auto",
+        choices=["light", "medium", "heavy"],
+        default="light",
+        help="Optimization intensity: light (~10 trials), medium (~30), heavy (~100+)",
+    )
+    parser.add_argument(
+        "--train-size",
+        type=int,
+        default=200,
+        help="Training set size (default: 200)",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=int,
+        default=50,
+        help="Test set size (default: 50)",
+    )
+    parser.add_argument(
+        "--name",
+        type=str,
+        default=None,
+        help="Experiment name (default: auto-generated from settings)",
+    )
+    return parser.parse_args()
 
-# Load dataset
-print("\n[1/6] Loading GSM8K dataset...")
-trainset, testset = load_math_problems(n_train=200, n_test=50)
-print(f"  Loaded {len(trainset)} train, {len(testset)} test examples")
 
-# Create baseline
-print("\n[2/6] Creating baseline solver...")
-baseline = create_math_solver()
+def evaluate_solver(solver, testset):
+    """Evaluate solver and return accuracy + predictions."""
+    correct = 0
+    predictions = []
 
-# Evaluate baseline
-print("\n[3/6] Evaluating baseline...")
-baseline_correct = 0
-baseline_predictions = []
+    for example in testset:
+        pred = solver(question=example.question)
+        expected = extract_answer(example.answer)
+        is_correct = answers_match(expected, pred.answer)
 
-for example in testset:
-    pred = baseline(question=example.question)
-    expected = extract_answer(example.answer)
-    is_correct = answers_match(expected, pred.answer)
+        correct += int(is_correct)
+        predictions.append(
+            {
+                "question": example.question,
+                "expected": expected,
+                "predicted": pred.answer,
+                "reasoning": pred.reasoning,
+                "correct": is_correct,
+            }
+        )
 
-    baseline_correct += int(is_correct)
-    baseline_predictions.append(
-        {
-            "question": example.question,
-            "expected": expected,
-            "predicted": pred.answer,
-            "reasoning": pred.reasoning,
-            "correct": is_correct,
-        }
+    accuracy = (correct / len(testset)) * 100
+    return accuracy, correct, predictions
+
+
+def main():
+    args = parse_args()
+
+    load_dotenv()
+    lm = dspy.LM("openai/gpt-3.5-turbo")
+    dspy.configure(lm=lm)
+
+    print("MATH SOLVER OPTIMIZATION")
+    print("=" * 60)
+    print("Optimizer: MIPROv2")
+    print(f"Settings: auto={args.auto}")
+    print(f"Data: train={args.train_size}, test={args.test_size}")
+
+    print("\n[1/5] Loading GSM8K dataset...")
+    trainset, testset = load_math_problems(
+        n_train=args.train_size, n_test=args.test_size
+    )
+    print(f"  Loaded {len(trainset)} train, {len(testset)} test examples")
+
+    print("\n[2/5] Evaluating baseline...")
+    baseline = create_math_solver()
+    baseline_acc, baseline_correct, baseline_preds = evaluate_solver(baseline, testset)
+    print(
+        f"  Baseline accuracy: {baseline_acc:.1f}% ({baseline_correct}/{len(testset)})"
     )
 
-baseline_accuracy = (baseline_correct / len(testset)) * 100
-print(f"  Baseline accuracy: {baseline_accuracy:.1f}% ({baseline_correct}/{len(testset)})")
+    print(f"\n[3/5] Running MIPROv2 optimization (auto={args.auto})...")
+    print("  This may take several minutes...")
 
-# Optimize
-print("\n[4/6] Running MIPROv2 optimization...")
-print("  (This may take 10-15 minutes...)")
-
-optimizer = MIPROv2(
-    metric=math_accuracy_metric,
-    auto="light",
-    num_threads=4,
-)
-
-optimized = optimizer.compile(
-    student=create_math_solver(),
-    trainset=trainset,
-)
-
-print("  Optimization complete!")
-
-# Evaluate optimized
-print("\n[5/6] Evaluating optimized solver...")
-optimized_correct = 0
-optimized_predictions = []
-
-for example in testset:
-    pred = optimized(question=example.question)
-    expected = extract_answer(example.answer)
-    is_correct = answers_match(expected, pred.answer)
-
-    optimized_correct += int(is_correct)
-    optimized_predictions.append(
-        {
-            "question": example.question,
-            "expected": expected,
-            "predicted": pred.answer,
-            "reasoning": pred.reasoning,
-            "correct": is_correct,
-        }
+    optimizer = MIPROv2(
+        metric=math_accuracy_metric,
+        auto=args.auto,
+        num_threads=4,
     )
 
-optimized_accuracy = (optimized_correct / len(testset)) * 100
-print(f"  Optimized accuracy: {optimized_accuracy:.1f}% ({optimized_correct}/{len(testset)})")
+    optimized = optimizer.compile(
+        student=create_math_solver(),
+        trainset=trainset,
+    )
+    print("  Optimization complete!")
 
-# Save results
-print("\n[6/6] Saving results...")
+    print("\n[4/5] Evaluating optimized solver...")
+    optimized_acc, optimized_correct, optimized_preds = evaluate_solver(
+        optimized, testset
+    )
+    print(
+        f"  Optimized accuracy: {optimized_acc:.1f}% ({optimized_correct}/{len(testset)})"
+    )
 
-improvement = optimized_accuracy - baseline_accuracy
-improvement_pct = (
-    (improvement / baseline_accuracy) * 100 if baseline_accuracy > 0 else 0
-)
+    improvement = optimized_acc - baseline_acc
+    improvement_pct = (improvement / baseline_acc) * 100 if baseline_acc > 0 else 0
 
-results = {
-    "task": "math_word_problems",
-    "dataset": "gsm8k",
-    "baseline": {
-        "accuracy": baseline_accuracy,
-        "correct": baseline_correct,
-        "total": len(testset),
-    },
-    "optimized": {
-        "accuracy": optimized_accuracy,
-        "correct": optimized_correct,
-        "total": len(testset),
-    },
-    "improvement": {
-        "absolute": improvement,
-        "percentage": improvement_pct,
-    },
-    "dataset_sizes": {
-        "train": len(trainset),
-        "test": len(testset),
-    },
-}
+    print("\n[5/5] Saving results...")
 
-results_dir = Path("results/math_solver")
-results_dir.mkdir(parents=True, exist_ok=True)
+    if args.name:
+        exp_name = args.name
+    else:
+        exp_name = f"{args.auto}_tr{args.train_size}"
 
-results_path = results_dir / "light_optimization.json"
-with open(results_path, "w") as f:
-    json.dump(results, f, indent=2)
+    results_dir = Path("results/math_solver")
+    results_dir.mkdir(parents=True, exist_ok=True)
 
-optimized_path = results_dir / "optimized_model_light.json"
-optimized.save(str(optimized_path))
+    results = {
+        "experiment": exp_name,
+        "task": "math_word_problems",
+        "dataset": "gsm8k",
+        "optimizer": "MIPROv2",
+        "optimizer_settings": {
+            "auto": args.auto,
+        },
+        "dataset_sizes": {
+            "train": len(trainset),
+            "test": len(testset),
+        },
+        "baseline": {
+            "accuracy": baseline_acc,
+            "correct": baseline_correct,
+            "total": len(testset),
+        },
+        "optimized": {
+            "accuracy": optimized_acc,
+            "correct": optimized_correct,
+            "total": len(testset),
+        },
+        "improvement": {
+            "absolute": improvement,
+            "percentage": improvement_pct,
+        },
+    }
 
-print(f"  Results saved to {results_path}")
-print(f"  Optimized model saved to {optimized_path}")
+    results_path = results_dir / f"optimization_{exp_name}.json"
+    with open(results_path, "w") as f:
+        json.dump(results, f, indent=2)
 
-# Summary
-print("\n" + "=" * 50)
-print("RESULTS SUMMARY")
-print("=" * 50)
-print(f"Baseline accuracy:    {baseline_accuracy:.1f}%")
-print(f"Optimized accuracy:   {optimized_accuracy:.1f}%")
-print(f"Improvement:          {improvement:+.1f}% ({improvement_pct:+.1f}%)")
+    model_path = results_dir / f"optimized_model_{exp_name}.json"
+    optimized.save(str(model_path))
 
-# Show comparison examples
-print("\n" + "=" * 50)
-print("SIDE-BY-SIDE COMPARISON (First 5 Examples)")
-print("=" * 50)
+    print(f"  Results saved to {results_path}")
+    print(f"  Model saved to {model_path}")
 
-for i in range(min(5, len(testset))):
-    b_pred = baseline_predictions[i]
-    o_pred = optimized_predictions[i]
+    print("\n" + "=" * 60)
+    print("OPTIMIZATION RESULTS")
+    print("=" * 60)
+    print(f"Experiment: {exp_name}")
+    print(f"Baseline accuracy:  {baseline_acc:.1f}%")
+    print(f"Optimized accuracy: {optimized_acc:.1f}%")
+    print(f"Improvement:        {improvement:+.1f}% ({improvement_pct:+.1f}%)")
 
-    print(f"\n--- Example {i+1} ---")
-    print(f"Question: {b_pred['question'][:100]}...")
-    print(f"Expected: {b_pred['expected']}")
-    print(f"Baseline: {b_pred['predicted']} {'✅' if b_pred['correct'] else '❌'}")
-    print(f"Optimized: {o_pred['predicted']} {'✅' if o_pred['correct'] else '❌'}")
+    # Improvement analysis
+    fixed = sum(
+        1
+        for i in range(len(testset))
+        if optimized_preds[i]["correct"] and not baseline_preds[i]["correct"]
+    )
+    regressed = sum(
+        1
+        for i in range(len(testset))
+        if not optimized_preds[i]["correct"] and baseline_preds[i]["correct"]
+    )
 
-    if o_pred["correct"] and not b_pred["correct"]:
-        print("  Optimization fixed this!")
-    elif not o_pred["correct"] and b_pred["correct"]:
-        print("  Regression on this example")
+    print(f"\nProblems fixed: {fixed}")
+    print(f"Problems regressed: {regressed}")
+    print(f"Net improvement: {fixed - regressed} problems")
+    print("=" * 60)
 
-# Improvement analysis
-print("\n" + "=" * 50)
-print("IMPROVEMENT ANALYSIS")
-print("=" * 50)
+    return results
 
-fixed = sum(
-    1
-    for i in range(len(testset))
-    if optimized_predictions[i]["correct"] and not baseline_predictions[i]["correct"]
-)
-regressed = sum(
-    1
-    for i in range(len(testset))
-    if not optimized_predictions[i]["correct"] and baseline_predictions[i]["correct"]
-)
 
-print(f"Problems fixed by optimization: {fixed}")
-print(f"Problems that regressed: {regressed}")
-print(f"Net improvement: {fixed - regressed} problems")
-print("\nOptimization complete!")
+if __name__ == "__main__":
+    main()

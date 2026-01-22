@@ -1,0 +1,27 @@
+{
+  "experiment": "light_tr300",
+  "task": "math_word_problems",
+  "dataset": "gsm8k",
+  "optimizer": "MIPROv2",
+  "optimizer_settings": {
+    "auto": "light"
+  },
+  "dataset_sizes": {
+    "train": 300,
+    "test": 100
+  },
+  "baseline": {
+    "accuracy": 67.0,
+    "correct": 67,
+    "total": 100
+  },
+  "optimized": {
+    "accuracy": 80.0,
+    "correct": 80,
+    "total": 100
+  },
+  "improvement": {
+    "absolute": 13.0,
+    "percentage": 19.402985074626866
+  }
+}

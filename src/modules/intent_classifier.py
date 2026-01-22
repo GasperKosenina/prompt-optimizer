@@ -56,9 +56,7 @@ class IntentClassifier(dspy.Signature):
     Choose the most specific intent that matches the customer's request.
     """
 
-    query: str = dspy.InputField(
-        desc="A customer support query or message"
-    )
+    query: str = dspy.InputField(desc="A customer support query or message")
     intent: str = dspy.OutputField(
         desc=f"The intent category. Must be one of: {INTENT_LABELS_STR}"
     )
@@ -79,7 +77,9 @@ def create_classifier() -> dspy.Predict:
     return dspy.Predict(IntentClassifier)
 
 
-def accuracy_metric(example: dspy.Example, prediction: dspy.Prediction, _trace=None) -> bool:
+def accuracy_metric(
+    example: dspy.Example, prediction: dspy.Prediction, _trace=None
+) -> bool:
     """
     Compute whether the predicted intent matches the expected intent.
 
@@ -139,27 +139,27 @@ def evaluate(
         print("-" * 60)
 
     for i, example in enumerate(testset):
-        # Get prediction
         prediction = classifier(query=example.query)
 
-        # Check if correct
         is_correct = accuracy_metric(example, prediction)
         correct += int(is_correct)
 
-        # Store result
-        predictions.append({
-            "query": example.query,
-            "expected": example.intent,
-            "predicted": prediction.intent,
-            "correct": is_correct,
-        })
+        predictions.append(
+            {
+                "query": example.query,
+                "expected": example.intent,
+                "predicted": prediction.intent,
+                "correct": is_correct,
+            }
+        )
 
-        # Print progress
         if verbose:
             status = "✓" if is_correct else "✗"
             # Truncate long queries for display
-            query_display = example.query[:50] + "..." if len(example.query) > 50 else example.query
-            print(f"{status} [{i+1}/{total}] {query_display}")
+            query_display = (
+                example.query[:50] + "..." if len(example.query) > 50 else example.query
+            )
+            print(f"{status} [{i + 1}/{total}] {query_display}")
             if not is_correct:
                 print(f"    Expected: {example.intent}, Got: {prediction.intent}")
 
@@ -244,7 +244,9 @@ def print_confusion_matrix(predictions: list[dict], show_correct: bool = False) 
 
         # Collect entries to show
         entries_to_show = []
-        for predicted, count in sorted(predictions_for_class.items(), key=lambda x: -x[1]):
+        for predicted, count in sorted(
+            predictions_for_class.items(), key=lambda x: -x[1]
+        ):
             is_correct = expected == predicted
             if show_correct or not is_correct:
                 entries_to_show.append((predicted, count, is_correct))

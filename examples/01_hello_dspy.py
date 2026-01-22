@@ -11,11 +11,8 @@ This script demonstrates the basic DSPy workflow:
 import dspy
 from dotenv import load_dotenv
 
-# Load API keys from .env file
 load_dotenv()
 
-# Configure DSPy with a language model
-# Using GPT-3.5-turbo as it's cost-effective for development
 lm = dspy.LM("openai/gpt-3.5-turbo")
 dspy.configure(lm=lm)
 
@@ -29,10 +26,8 @@ class AnswerQuestion(dspy.Signature):
 
 
 def main():
-    # Create a predictor using our signature
     predictor = dspy.Predict(AnswerQuestion)
 
-    # Test questions
     test_questions = [
         "What is the capital of France?",
         "What is 2 + 2?",

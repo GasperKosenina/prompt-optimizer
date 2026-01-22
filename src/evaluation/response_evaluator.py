@@ -23,7 +23,6 @@ def evaluate(
     Returns:
         Dictionary with average_quality, scores list, and statistics
     """
-    # Use single strict judge (simpler, faster, easier to calibrate)
     judge = dspy.ChainOfThought(ResponseQualityJudge)
     all_scores = []
 
@@ -31,10 +30,8 @@ def evaluate(
         print(f"Evaluating {len(testset)} examples...")
 
     for i, example in enumerate(testset):
-        # Generate response
         prediction = generator(query=example.query, intent=example.intent)
 
-        # Judge quality
         judgment = judge(
             query=example.query, intent=example.intent, response=prediction.response
         )
@@ -48,19 +45,16 @@ def evaluate(
         }
         all_scores.append(scores)
 
-        # Show first 3 examples in detail
         if verbose and i < 3:
-            print(f"\n--- Example {i+1} ---")
+            print(f"\n--- Example {i + 1} ---")
             print(f"Query: {example.query[:80]}...")
             print(f"Intent: {example.intent}")
             print(f"Quality: {scores['quality_score']:.2f}")
             print(f"Reasoning: {scores['reasoning'][:100]}...")
 
-        # Progress indicator every 10 examples
         if verbose and (i + 1) % 10 == 0:
             print(f"Progress: {i + 1}/{len(testset)} examples evaluated")
 
-    # Calculate statistics
     scores_list = [s["quality_score"] for s in all_scores]
     avg_quality = sum(scores_list) / len(scores_list)
     min_quality = min(scores_list)
@@ -84,13 +78,12 @@ def evaluate(
         print(f"Max quality:        {max_quality:.3f}")
         print(f"Range:              {max_quality - min_quality:.3f}")
 
-        # Show score distribution
         bins = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
         print(f"\nScore distribution:")
         for i in range(len(bins) - 1):
             count = sum(1 for s in scores_list if bins[i] <= s < bins[i + 1])
             bar = "█" * count
-            print(f"  {bins[i]:.1f}-{bins[i+1]:.1f}: {bar} ({count})")
+            print(f"  {bins[i]:.1f}-{bins[i + 1]:.1f}: {bar} ({count})")
         print("=" * 60)
 
     return result
@@ -130,7 +123,7 @@ def compare_responses(
         )
 
         if verbose and i < 3:
-            print(f"\n--- Comparison {i+1} ---")
+            print(f"\n--- Comparison {i + 1} ---")
             print(f"Query: {example.query[:60]}...")
             print(f"Winner: {judgment.winner}")
             print(f"Reason: {judgment.reasoning}")

@@ -1,0 +1,47 @@
+{
+  "experiment": "d4_r1_tr200",
+  "task": "intent_classification",
+  "dataset": "bitext_27k",
+  "baseline": {
+    "accuracy": 92.0,
+    "correct": 46,
+    "total": 50
+  },
+  "optimized": {
+    "accuracy": 90.0,
+    "correct": 45,
+    "total": 50
+  },
+  "improvement": {
+    "absolute": -2.0,
+    "percentage": -2.1739130434782608
+  },
+  "dataset_sizes": {
+    "train": 200,
+    "test": 50
+  },
+  "optimizer": "BootstrapFewShot",
+  "optimizer_settings": {
+    "max_bootstrapped_demos": 4,
+    "max_labeled_demos": 4,
+    "max_rounds": 1
+  },
+  "selected_demos": [
+    {
+      "query": "is it possible to make a complaint against your company?",
+      "intent": "complaint"
+    },
+    {
+      "query": "how to check the status of purchase {{Order Number}}?",
+      "intent": "track_order"
+    },
+    {
+      "query": "help me to leave feedback for ur services",
+      "intent": "review"
+    },
+    {
+      "query": "where could I cancel purchase {{Order Number}}?",
+      "intent": "cancel_order"
+    }
+  ]
+}

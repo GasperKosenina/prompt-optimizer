@@ -1,0 +1,28 @@
+{
+  "experiment": "medium_tr100",
+  "task": "response_generation",
+  "optimizer": "MIPROv2",
+  "optimizer_settings": {
+    "auto": "medium"
+  },
+  "dataset_sizes": {
+    "train": 100,
+    "test": 50
+  },
+  "baseline": {
+    "average_quality": 0.7128,
+    "min_quality": 0.4,
+    "max_quality": 0.92,
+    "instructions": "Generate a helpful customer support response."
+  },
+  "optimized": {
+    "average_quality": 0.7807999999999999,
+    "min_quality": 0.65,
+    "max_quality": 0.95,
+    "instructions": "Given a customer support query and a detected intent, provide a step-by-step reasoning process to understand the context and then formulate a professional and empathetic response with clear next steps for the customer."
+  },
+  "improvement": {
+    "absolute": 0.06799999999999995,
+    "percentage": 9.5398428731762
+  }
+}

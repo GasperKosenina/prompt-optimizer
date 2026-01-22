@@ -196,22 +196,19 @@ def load_intent_classification_data(
     Returns:
         Tuple of (trainset, testset) as DSPy Examples
     """
-    # Load full dataset
     df = load_bitext_dataset()
 
-    # Split first (before sampling to avoid data leakage)
+    # stratification each each of the 27 intents are proportionally represented
     train_df, test_df = split_dataset(
         df, test_size=test_size, random_state=random_state
     )
 
-    # Sample if requested
     if n_train is not None:
         train_df = get_stratified_sample(train_df, n_train, random_state=random_state)
 
     if n_test is not None:
         test_df = get_stratified_sample(test_df, n_test, random_state=random_state)
 
-    # Convert to DSPy Examples
     trainset = create_intent_examples(train_df)
     testset = create_intent_examples(test_df)
 

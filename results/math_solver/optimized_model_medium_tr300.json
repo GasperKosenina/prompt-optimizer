@@ -1,0 +1,57 @@
+{
+  "predict": {
+    "traces": [],
+    "train": [],
+    "demos": [
+      {
+        "augmented": true,
+        "question": "The school decided to add 20% to the gym budget. In a normal month, they could buy 15 dodgeballs for $5 each if they spent the entire budget on that. If they only buy softballs instead, which cost $9 each, how many can they buy with the new budget?",
+        "reasoning": "To find the new budget after adding 20%, we calculate 120% of the existing budget (100% + 20%). \nIf the school could buy 15 dodgeballs for $5 each, the cost of each dodgeball is $5. \nSo, the cost of buying 15 dodgeballs would be 15 * $5 = $75. \nWith the 20% increase, the new budget would be 120% of $75, which is 1.2 * $75 = $90. \nIf they spend the new budget on softballs at $9 each, they can buy $90 / $9 = 10 softballs.",
+        "answer": "They can buy 10 softballs with the new budget."
+      },
+      {
+        "augmented": true,
+        "question": "There were 40 kids on Lake Pleasant. A fourth of the kids went tubing, but only half of the tubers went rafting. How many of the kids who joined the rafting excursion were also on the tubing excursion?",
+        "reasoning": "Let's first find out how many kids went tubing. Since a fourth of the kids went tubing, we calculate 40 / 4 = 10 kids went tubing.\nThen we find out how many of the tubers went rafting. Since only half of the tubers went rafting, we calculate 10 / 2 = 5 kids went rafting from the tubing group.",
+        "answer": "There were 5 kids who joined both the tubing and the rafting excursions."
+      },
+      {
+        "augmented": true,
+        "question": "Betty picked 16 strawberries. Matthew picked 20 more strawberries than Betty and twice as many as Natalie. They used their strawberries to make jam. One jar of jam used 7 strawberries and they sold each jar at $4. How much money were they able to make from the strawberries they picked?",
+        "reasoning": "Let's calculate the total number of strawberries Matthew picked:\nMatthew picked 16 + 20 = 36 strawberries.\nLet's calculate how many strawberries Natalie picked:\nNatalie picked half as many as Matthew, so she picked 36 / 2 = 18 strawberries.\nThe total number of strawberries they picked is 16 + 36 + 18 = 70 strawberries.\nThey can make 70 / 7 = 10 jars of jam.\nIf they sell each jar at $4, they can make 10 * 4 = $40 from the strawberries they picked.",
+        "answer": "40"
+      },
+      {
+        "augmented": true,
+        "question": "The price of buying a wooden toy at the new Craftee And Best store is $20, and the cost of buying a hat is $10. If Kendra went to the shop with a $100 bill and bought two wooden toys and three hats, calculate the change she received.",
+        "reasoning": "Kendra bought two wooden toys, so the total cost for the toys is 2 * $20 = $40.\nKendra also bought three hats, so the total cost for the hats is 3 * $10 = $30.\nThe total cost for both the toys and hats is $40 + $30 = $70.\nIf Kendra paid with a $100 bill, her change is $100 - $70 = $30.",
+        "answer": "Kendra received $30 in change."
+      }
+    ],
+    "signature": {
+      "instructions": "Given a math word problem, provide step-by-step reasoning and calculate the final numerical answer to solve the problem.",
+      "fields": [
+        {
+          "prefix": "Question:",
+          "description": "A math word problem requiring arithmetic reasoning"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "Step-by-step reasoning showing how to solve the problem"
+        },
+        {
+          "prefix": "Answer:",
+          "description": "The final numerical answer (just the number)"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

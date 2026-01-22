@@ -1,0 +1,53 @@
+{
+  "predict": {
+    "traces": [],
+    "train": [],
+    "demos": [
+      {
+        "query": "I want to know about the shipping periods",
+        "intent": "delivery_period"
+      },
+      {
+        "query": "I need helprestoring my user access key",
+        "intent": "recover_password"
+      },
+      {
+        "query": "can you help me earning several products?",
+        "intent": "place_order"
+      },
+      {
+        "query": "could you give me information about the shipment methods?",
+        "intent": "delivery_options"
+      }
+    ],
+    "signature": {
+      "instructions": "Given a customer support query and a detected intent, provide a step-by-step reasoning process to understand the context and then formulate a professional and empathetic response with clear next steps for the customer.",
+      "fields": [
+        {
+          "prefix": "Query:",
+          "description": "Customer support query or message"
+        },
+        {
+          "prefix": "Intent:",
+          "description": "Detected customer intent (e.g., cancel_order, track_order)"
+        },
+        {
+          "prefix": "Reasoning: Let's think step by step in order to",
+          "description": "${reasoning}"
+        },
+        {
+          "prefix": "Response:",
+          "description": "Professional, empathetic support response with clear next steps"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}
